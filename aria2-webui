@@ -1,0 +1,88 @@
+#!/bin/bash
+#
+# aria2-webui Launcher
+
+
+error(){
+    # detect TTY and respond appropriately
+    if [[ -t 0 ]]; then
+        echo -e "ERROR: $*" >&2
+    elif have zenity; then
+        zenity --error \
+               --text "$*" \
+               --title aria2-webui &>/dev/null
+    fi
+}
+
+
+have(){
+    hash "$1" &>/dev/null
+}
+
+
+# aria2 static configuration
+DOWNLOAD_DIRECTORY="$HOME/Downloads"
+MAX_CONNECTIONS_PER_SERVER='5'
+RPC_SECRET_ENABLED='true'
+
+# aria2 dynamic configuration
+INSTALLATION_DIR=$( (dirname "$(realpath -e "$0")" ) 2>/dev/null)
+RPC_SECRET_VALUE=$(tr -dc _A-Z-a-z-0-9 < /dev/urandom | head -c32)
+
+# launcher configuration
+ARIA2=(aria2c --dir="$DOWNLOAD_DIRECTORY" --enable-rpc=true --max-connection-per-server="$MAX_CONNECTIONS_PER_SERVER" --pause=true --pause-metadata=true)
+BROWSER=(google-chrome --kiosk --user-data-dir="$HOME/.config/aria2-webui")
+TERMINAL=(xfce4-terminal --execute)
+
+# ensure aria2 is installed
+if ! have "${ARIA2[0]}"; then
+    error "${ARIA2[0]} is not installed\nUpdate the value of ARIA2 or ensure ${ARIA2[0]} is on your PATH"
+    exit 1
+# ensure browser is installed
+elif ! have "${BROWSER[0]}"; then
+    error "${BROWSER[0]} is not installed\nUpdate the value of BROWSER or ensure ${BROWSER[0]} is on your PATH"
+    exit 1
+# ensure terminal is installed
+elif ! have "${TERMINAL[0]}"; then
+    error "${TERMINAL[0]} is not installed\nUpdate the value of TERMINAL or ensure ${TERMINAL[0]} is on your PATH"
+    exit 1
+# ensure aria2-webui installation was detected
+elif [[ ! -f $INSTALLATION_DIR/index.html ]]; then
+    error "Unable to determine INSTALLATION_DIR\nConsider setting the value manually"
+    exit 1
+elif [[ ! -f $INSTALLATION_DIR/configuration.js ]]; then
+    error "configuration.js is not in the INSTALLATION_DIR"
+    exit 1
+# ensure aria2 is not already running
+elif have pgrep && pgrep -x "${ARIA2[0]}" &>/dev/null; then
+    error "${ARIA2[0]} is already running"
+    exit 1
+fi
+
+if [[ $RPC_SECRET_ENABLED = 'true' ]]; then
+
+    # ensure RPC_SECRET_VALUE is not empty (so long as --rpc-secret is enabled)
+    if [[ -z $RPC_SECRET_VALUE ]]; then
+        error "RPC_SECRET_VALUE is empty\nConsider setting the value manually"
+        exit 1
+    fi
+
+    # set token value in aria2-webui's configuration.js
+    if sed -i "0,/token: .*/{s/token: .*/token: '$RPC_SECRET_VALUE'/}" "$INSTALLATION_DIR/configuration.js"; then
+        ARIA2+=(--rpc-secret="$RPC_SECRET_VALUE")
+    else
+        error "$(cat <<-EOF
+		Unable to update aria2-webui's configuration with the --rpc-secret token
+		Consider setting the value manually within the webui
+		VALUE: $RPC_SECRET_VALUE
+		EOF
+        )"
+    fi
+
+fi
+
+# start aria2 server
+"${TERMINAL[@]}" "${ARIA2[@]}"
+
+# start aria2 webui
+"${BROWSER[@]}" "file://$INSTALLATION_DIR/index.html"

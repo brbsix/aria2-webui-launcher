@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Aria2 WebUI
+Comment=High speed download utility
+Icon=applications-filesharing
+Exec=aria2-webui
+NoDisplay=false
+Categories=Network;
+StartupNotify=true
+Terminal=false
